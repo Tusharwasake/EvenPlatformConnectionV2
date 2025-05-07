@@ -1,9 +1,10 @@
 import { participantModel } from "../models/participantsModel.js";
 import { eventModel } from "../models/eventModel.js";
-import * as mailsender from "../emailSender/emailSender.js";
+import { userModel } from "../models/userModel.js"; // Add this import
+import { mailsender } from "../emailSender/emailSender.js";
 import "dotenv/config";
 
-// Generate a unique code and send email with the code
+// Generate a unique code
 const generateUniqueCode = async () => {
   let code;
   let isUnique = false;
@@ -17,40 +18,105 @@ const generateUniqueCode = async () => {
     }
   }
 
-  // Send email with the code
-  mailsender(process.env.GMAIL, "Your Event Verification Code", code);
   return code;
 };
 
 // Register as a participant for an event
 export const registerParticipant = async (req, res) => {
   try {
-    const code = await generateUniqueCode();
-    const eventId = req.body.eventId;
+    const { eventId, phone } = req.body;
     const userId = req.user.userId;
 
+    // Validate required fields
+    if (!eventId) {
+      return res.status(400).json({
+        success: false,
+        message: "Event ID is required"
+      });
+    }
+
+    // Check if event exists
+    const event = await eventModel.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found"
+      });
+    }
+
+    // Check if user is already registered for this event
+    const existingRegistration = await participantModel.findOne({ userId, eventId });
+    if (existingRegistration) {
+      return res.status(400).json({
+        success: false,
+        message: "You are already registered for this event"
+      });
+    }
+
+    // Get user details to send email
+    const user = await userModel.findById(userId);
+    if (!user || !user.email) {
+      return res.status(404).json({
+        success: false,
+        message: "User email not found"
+      });
+    }
+    console.log(user.email);
+    
+    // Generate unique verification code
+    const code = await generateUniqueCode();
+
+    // Create new participant record
     const newParticipant = await participantModel.create({
-      eventId: eventId,
-      userId: userId,
-      code: code,
-      phone: req.body.phone || "",
+      eventId,
+      userId,
+      code,
+      phone: phone || "",
+      verificationStatus: "pending",
+      registeredAt: new Date()
     });
 
     // Increment participant count in the event model
     await eventModel.findByIdAndUpdate(eventId, {
-      $inc: { participantCount: 1 },
+      $inc: { participantCount: 1 }
     });
+
+    // Send verification code to user's email
+    const emailSubject = `Verification Code for ${event.name}`;
+    const emailBody = `
+      <h2>Event Registration Confirmation</h2>
+      <p>Thank you for registering for ${event.name}!</p>
+      <p>Your verification code is: <strong>${code}</strong></p>
+      <p>Event details:</p>
+      <ul>
+        <li>Date: ${new Date(event.startDate).toLocaleDateString()}</li>
+        <li>Time: ${new Date(event.startDate).toLocaleTimeString()}</li>
+        <li>Location: ${event.location}</li>
+      </ul>
+      <p>Please keep this code handy for event check-in.</p>
+    `;
+
+   
+    
+    await mailsender(user.email, emailSubject, emailBody);
 
     res.status(200).json({
       success: true,
-      message: "Registered as participant successfully",
-      data: newParticipant,
+      message: "Registered as participant successfully. Verification code sent to your email.",
+      data: {
+        _id: newParticipant._id,
+        eventId: newParticipant.eventId,
+        userId: newParticipant.userId,
+        registeredAt: newParticipant.registeredAt,
+        // Don't include the code in the response for security
+      }
     });
   } catch (error) {
-    console.log(error.message);
+    console.error("Registration error:", error.message);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to register as participant",
+      error: error.message
     });
   }
 };

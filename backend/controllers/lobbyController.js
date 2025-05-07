@@ -1,7 +1,7 @@
 import { lobbyModel } from "../models/lobbyEventModel.js";
 import { eventModel } from "../models/eventModel.js";
 import { participantModel } from "../models/participantsModel.js";
-
+import mongoose from "mongoose";
 // Create a new lobby
 export const createLobby = async (req, res) => {
   try {
@@ -236,21 +236,39 @@ export const deleteLobby = async (req, res) => {
   }
 };
 
-// Join lobby (using verification)
 export const joinLobby = async (req, res) => {
   try {
     const { lobbyId } = req.params;
     const { code } = req.body;
     const userId = req.user.userId;
 
-    // Find the lobby
-    const lobby = await lobbyModel.findById(lobbyId);
+    // Input validation
+    if (!lobbyId || !code) {
+      return res.status(400).json({
+        success: false,
+        message: "Lobby ID and verification code are required",
+      });
+    }
+
+    // Find the lobby with populated event details
+    const lobby = await lobbyModel
+      .findById(lobbyId)
+      .populate("eventId", "name startDate endDate");
+
     if (!lobby) {
       return res.status(404).json({
         success: false,
         message: "Lobby not found",
       });
     }
+
+    // Debug information
+    // console.log("Join attempt:", {
+    //   userId,
+    //   lobbyId,
+    //   eventId: lobby.eventId?._id || lobby.eventId,
+    //   codeProvided: code,
+    // });
 
     // Check if lobby is active
     if (!lobby.isActive) {
@@ -261,57 +279,128 @@ export const joinLobby = async (req, res) => {
     }
 
     // Check if lobby is full
-    if (
-      lobby.maxParticipants > 0 &&
-      lobby.participants.length >= lobby.maxParticipants
-    ) {
+    if (lobby.isFull) {
       return res.status(400).json({
         success: false,
         message: "This lobby is full",
       });
     }
 
-    // Check if user is already in the lobby
-    if (lobby.participants.includes(userId)) {
+    // Check if user is already in the lobby - use the schema method
+    if (lobby.hasParticipant(userId)) {
       return res.status(400).json({
         success: false,
         message: "You are already in this lobby",
       });
     }
 
-    // Verify the participant code
-    const participant = await participantModel.findOne({
-      userId,
-      eventId: lobby.eventId,
-      code,
-    });
+    // Get event ID from the lobby
+    const eventId = lobby.eventId?._id || lobby.eventId;
 
-    if (!participant) {
-      return res.status(401).json({
+    if (!eventId) {
+      return res.status(500).json({
         success: false,
-        message: "Invalid verification code",
+        message: "Lobby has invalid event reference",
       });
     }
 
-    // Add user to lobby
-    lobby.participants.push(userId);
-    await lobby.save();
-
-    const updatedLobby = await lobbyModel
-      .findById(lobbyId)
-      .populate("eventId", "name startDate endDate")
-      .populate("createdBy", "name email")
-      .populate("participants", "name email");
-
-    res.status(200).json({
-      success: true,
-      message: "Successfully joined the lobby",
-      data: updatedLobby,
+    // Find participant record with diagnostic logging
+    console.log("Looking for participant with:", {
+      userId,
+      eventId: eventId,
+      code,
     });
+
+    // Verify the participant code
+    const participant = await participantModel.findOne({
+      userId: new mongoose.Types.ObjectId(userId),
+      eventId: new mongoose.Types.ObjectId(eventId.toString()),
+      code: code,
+    });
+
+    console.log(
+      "Participant search result:",
+      participant ? "Found" : "Not found"
+    );
+
+    // If no participant found, try to find any participant for this user and event
+    if (!participant) {
+      const anyParticipant = await participantModel.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+        eventId: new mongoose.Types.ObjectId(eventId.toString()),
+      });
+
+      // console.log(
+      //   "Any participant for this user/event:",
+      //   anyParticipant ? `Found with code ${anyParticipant.code}` : "None found"
+      // );
+
+      // Check if there's a different event ID issue
+      const participantWithCode = await participantModel.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+        code,
+      });
+
+      // if (participantWithCode) {
+      //   console.log(
+      //     "Found participant with correct code but different eventId:",
+      //     participantWithCode.eventId.toString()
+      //   );
+      // }
+
+      return res.status(401).json({
+        success: false,
+        message: "Invalid verification code or not registered for this event",
+      });
+    }
+
+    // Start a session for transaction
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // Add user to the lobby participants array
+      lobby.participants.push(userId);
+
+      // Update the lobby with the new participant
+      await lobby.save({ session });
+
+      // If max participants is set and we've reached that limit, mark lobby as full
+      if (
+        lobby.maxParticipants > 0 &&
+        lobby.participants.length >= lobby.maxParticipants
+      ) {
+        lobby.isFull = true;
+        await lobby.save({ session });
+      }
+
+      // Commit the transaction
+      await session.commitTransaction();
+      session.endSession();
+
+      // Return success response with updated lobby data
+      return res.status(200).json({
+        success: true,
+        message: "Successfully joined the lobby",
+        data: {
+          lobbyId: lobby._id,
+          lobbyName: lobby.name,
+          eventId: eventId,
+          eventName: lobby.eventId?.name || "Event",
+        },
+      });
+    } catch (error) {
+      // If an error occurs, abort the transaction
+      await session.abortTransaction();
+      session.endSession();
+      throw error;
+    }
   } catch (error) {
+    console.error("Error joining lobby:", error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to join lobby",
+      error: error.message,
     });
   }
 };

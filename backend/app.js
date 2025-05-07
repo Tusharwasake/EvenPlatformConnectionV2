@@ -13,7 +13,7 @@ import { router as authRouter } from "./routes/auth.js";
 import { participantRouter } from "./routes/participants.js";
 import { eventRouter } from "./routes/eventRoutes.js";
 import { filterRoutes } from "./routes/filterRoutes.js";
-import { joinGroupRouter } from "./routes/groupLobbyRouter.js";
+
 import lobbyRoutes from "./routes/lobbyRoutes.js";
 import attendanceRoutes from "./routes/attendanceRoutes.js";
 import friendRoutes from "./routes/friendRoutes.js";
@@ -79,7 +79,6 @@ app.use("/user", authRouter);
 app.use("/participants", protect, participantRouter);
 app.use("/events", eventRouter); // Some routes public, others protected in the router
 app.use("/filter", filterRoutes);
-app.use("/joingroup", protect, joinGroupRouter);
 app.use("/lobbies", lobbyRoutes); // Mix of public/protected routes
 app.use("/attendance", protect, attendanceRoutes);
 app.use("/friends", protect, friendRoutes);
