@@ -29,10 +29,11 @@ import lobbyCleanupService from "./services/lobbyCleanupService.js";
 import { configureSecurityMiddleware } from "./middleware/securityMiddleware.js";
 import { protect, refreshToken } from "./middleware/jwtMiddleware.js";
 import { authentication, isAdmin } from "./middleware/authMiddleware.js";
+import { healthRouter } from "./routes/healthRoutes.js";
 
 // Environment variables
 const SERVER_PORT = process.env.PORT || 5000;
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 const NODE_ENV = process.env.NODE_ENV || "development";
 
 // Initialize Express app
@@ -69,8 +70,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Add automated token refresh to all routes
 app.use(refreshToken);
+app.use("/health", healthRouter);
 
 // API routes with appropriate security middleware
 app.use("/user", authRouter);

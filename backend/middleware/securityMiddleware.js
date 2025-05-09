@@ -25,7 +25,7 @@ export const configureSecurityMiddleware = (app) => {
   });
 
   // Apply general rate limiting to all routes
-  app.use("/api", generalLimiter);
+  app.use("/", generalLimiter);
 
   // More strict rate limiting for authentication routes
   const authLimiter = rateLimit({

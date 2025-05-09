@@ -6,7 +6,7 @@ const friendRequestsList = document.getElementById("friendRequests");
 
 sendRequestButton.addEventListener("click", async () => {
   try {
-    await fetch("http://localhost:3000/api/friends/sendFriendRequest", {
+    await fetch("http://localhost:3000/friends/sendFriendRequest", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ senderId: "dummy1", receiverId: "dummy2" }),
@@ -28,17 +28,14 @@ const groupsList = document.getElementById("groups");
 
 createGroupButton.addEventListener("click", async () => {
   try {
-    const response = await fetch(
-      "http://localhost:3000/api/groups/createGroup",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Study Group",
-          participants: ["dummy1", "dummy2"],
-        }),
-      }
-    );
+    const response = await fetch("http://localhost:3000/groups/createGroup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Study Group",
+        participants: ["dummy1", "dummy2"],
+      }),
+    });
     const data = await response.json();
     const listItem = document.createElement("li");
     listItem.textContent = data.group.name;
@@ -56,7 +53,7 @@ const messagesList = document.getElementById("messages");
 sendMessageButton.addEventListener("click", async () => {
   const message = messageInput.value;
   try {
-    await fetch("http://localhost:3000/api/chats/sendMessage", {
+    await fetch("http://localhost:3000/chats/sendMessage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

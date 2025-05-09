@@ -13,7 +13,7 @@ const userSchema = mongoose.Schema(
     role: {
       type: String,
       required: true,
-      enum: ["participant", "organizer"],
+      enum: ["participant", "organizer","admin"],
       default: "participant",
     },
     lobbyStatus: { type: Boolean, default: false },
